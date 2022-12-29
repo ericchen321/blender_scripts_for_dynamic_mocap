@@ -11,14 +11,16 @@ class Constants:
     Constants used in the script.
     """
     csv_dirpath = "/home/eric/ssl/mujoco-2.1.0/dynamic_mocap/eccv_2020/raw_data/"
-    subject_id = "13"
-    motion_type = "run"
-    trial_id = "1"
+    subject_id = 2
+    motion_type = "fast_walk"
+    trial_id = 1
     max_num_frames = 250
     num_subframes_per_frame = 10
     num_header_rows = 5
-    num_feet = 2 #  just left/right foot so far
+    num_feet = 2 # just left/right foot so far
     epsi = 1e-3
+    force_thres = 20 # arbitrarily-chosen threshold for force magnitude
+        # below which we ignore the measurement
     length_scaling = 1000.0 # from mm to m
     arrow_names = ["arrow_left", "arrow_right"]
     arrow_colors = [
@@ -30,11 +32,11 @@ class Constants:
     human_name = "Armature"
     plate_names = ["force_plate_left", "force_plate_right"]
     plate_colors = [
-        np.array([0.0, 0.0, 1.0, 1.0]),
-        np.array([1.0, 0.0, 0.0, 1.0])]
-    # plate dimensions from https://www.amti.biz/product/bms400600/#specifications;
-    # not sure though if it's the model used in the paper
-    plate_dims = np.array([0.8, 0.3, 0.0825])
+        np.array([0.4, 1, 0.7, 1.0]),
+        np.array([0.4, 1, 0.7, 1.0])]
+    # plate dimensions as (horizontal dims as Bastian recalls them; vertical dim
+    # grabbed from an AMTI model)
+    plate_dims = np.array([0.5, 0.5, 0.0825])
     ball_names = ["ball_left", "ball_right"]
     ball_colors = [
         np.array([0.0, 0.0, 1.0, 1.0]),
@@ -80,6 +82,7 @@ def read_force_plate_data(
                     cops[frame_idx, 0] = np.mean(cops_per_frame[:, 0], axis=0)
                     cops[frame_idx, 1] = np.mean(cops_per_frame[:, 1], axis=0)
                     frame_idx += 1
+        print(f"Done reading {csv_filepath}.")
         print(f"Read {frame_idx} frames of data.")
 
     # flip forces (so measured as "force applied from foot to ground")
@@ -315,6 +318,33 @@ def on_frame_change_pre(scene):
     pos_feet_world[0] = get_foot_position("mixamorig:LeftFoot")
     pos_feet_world[1] = get_foot_position("mixamorig:RightFoot")
 
+    # if this is the first frame in which non-zero GRF is registered,
+    # set position of each force plate accordingly
+    if np.linalg.norm(pos_plates) < Constants.epsi and (
+        np.linalg.norm(
+            forces[frame, max_force_foot_idx]) > Constants.force_thres):
+        for i in range(len(Constants.plate_names)):
+            # compute plate location
+            if i == 0:
+                Oprime_CoP_world = cops[
+                    frame, max_force_foot_idx] # from plate-frame origin to CoP
+                Oprime_O_world = -1.0 * get_corner_pos_object(
+                    Constants.plate_names[i])[1]
+                pos_Oprime_world = pos_feet_world[max_force_foot_idx] - Oprime_CoP_world
+                pos_plates[i] = pos_Oprime_world + Oprime_O_world
+                pos_plates[i, 2] = force_plate_z
+            elif i == 1:
+                # align the 2nd plate with the 1st plate
+                # along the x-axis
+                pos_plates[i] = pos_plates[i-1] + \
+                    np.array([Constants.plate_dims[0], 0, 0])
+            set_object_location(
+                    pos_plates[i],
+                    Constants.plate_names[i])
+            print(f"Foot: {max_force_foot_idx}, frame: {frame}")
+            print(f"Force: {forces[frame, max_force_foot_idx]}")
+            print(f"Plate {i} pos: {pos_plates[i]}")
+
     # update the arrow's length
     arrow_lengths = np.zeros((Constants.num_feet,))
     for i in range(Constants.num_feet):
@@ -354,33 +384,21 @@ def on_frame_change_pre(scene):
         set_object_location(
             pos_balls_world[i],
             Constants.ball_names[i])
-    
-    # update the plate's horizontal coordinates
-    pos_plates = np.zeros((Constants.num_feet, 3))
-    for i in range(Constants.num_feet):
-        # compute plate location
-        Oprime_CoP_world = cops[frame, i] # from plate-frame origin to CoP
-        Oprime_O_world = -1.0 * get_corner_pos_object(
-            Constants.plate_names[i])[1]
-        pos_Oprime_world = pos_feet_world[i] - Oprime_CoP_world
-        pos_plates[i] = pos_Oprime_world + Oprime_O_world
-        set_object_location(
-            np.array(
-                [pos_plates[i, 0], pos_plates[i, 1], force_plate_z]),
-            Constants.plate_names[i])
 
 
 if __name__ == "__main__":
     # read forces and CoPs from csv file
     # TODO: read moments as well, maybe
     csv_filepath = f"{Constants.csv_dirpath}/" + \
-        f"{Constants.subject_id}/" + \
+        f"{Constants.subject_id:02}/" + \
         f"proband{Constants.subject_id}_{Constants.motion_type}_{Constants.trial_id}.csv"
     forces, cops = read_force_plate_data(
         csv_filepath,
         Constants.max_num_frames,
         Constants.num_subframes_per_frame,
         Constants.num_header_rows)
+    print(forces[0, 0])
+    print(forces[0, 1])
     
     # instantiate the force plates
     for i in range(Constants.num_feet):
@@ -388,6 +406,9 @@ if __name__ == "__main__":
             Constants.plate_names[i],
             Constants.plate_dims,
             Constants.plate_colors[i])
+
+    # initialize force plate positions
+    pos_plates = np.zeros((Constants.num_feet, 3))
 
     # print corner positions
     corner_pos_world_init = get_corner_pos_world(
@@ -398,7 +419,7 @@ if __name__ == "__main__":
     # get the foot under which non-zero GRF is registered
     forces_mags = np.linalg.norm(
         np.linalg.norm(forces, axis = 2), axis = 0) # (num_feet,)
-    max_force_bone_idx = np.argmax(forces_mags)
+    max_force_foot_idx = np.argmax(forces_mags)
     
     # instantiate the force arrows
     for i in range(Constants.num_feet):
