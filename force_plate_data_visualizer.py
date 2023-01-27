@@ -10,11 +10,11 @@ class Constants:
     r"""
     Constants used in the script.
     """
-    csv_dirpath = "/home/eric/ssl/mujoco-2.1.0/dynamic_mocap/eccv_2020/raw_data/"
-    subject_id = 2
-    motion_type = "fast_walk"
-    trial_id = 1
-    max_num_frames = 250
+    csv_dirpath = "/home/eric/ssl/dynamic_mocap/eccv2020/raw_data/"
+    subject_id = 11
+    motion_type = "walk"
+    trial_id = 4
+    max_num_frames = 500
     num_subframes_per_frame = 10
     num_header_rows = 5
     num_feet = 2 # just left/right foot so far
