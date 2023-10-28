@@ -10,7 +10,7 @@ class Constants:
     r"""
     Constants used in the script.
     """
-    csv_dirpath = "/home/eric/ssl/dynamic_mocap/eccv2020/raw_data/"
+    csv_dirpath = "/home/eric/ssl/dynamic_mocap/data/eccv2020/raw_data/"
     subject_id = 11
     motion_type = "walk"
     trial_id = 4

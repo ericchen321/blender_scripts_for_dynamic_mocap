@@ -11,7 +11,7 @@ class Constants:
     r"""
     Constants used in the script.
     """
-    csv_dirpath = "/home/eric/ssl/mujoco-2.1.0/dynamic_capture/eccv_2020/raw_data/"
+    csv_dirpath = "/home/eric/ssl/dynamic_mocap/data/eccv2020/raw_data/"
     subject_id = 2
     motion_type = "fast_walk"
     trial_id = "1"
